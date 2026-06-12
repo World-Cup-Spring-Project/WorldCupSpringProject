@@ -6,7 +6,7 @@
 ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
-![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white)
+![Spring Cloud](https://img.shields.io/badge/Spring_Cloud-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
 
 O **XXX** é um ecossistema de software distribuído, de alta escalabilidade e orientado a eventos, projetado para gerenciar a criticidade operacional, volumetria massiva e alta volatilidade transacional de um evento de magnitude global: a Copa do Mundo da FIFA.
 
@@ -21,7 +21,7 @@ A arquitetura adota uma abordagem de **Persistência Poliglota** e **Event-Drive
 * **Persistência Não-Relacional:** Spring Data MongoDB (MongoDB)
 * **Cache & Travas Distribuídas:** Redis
 * **Mensageria & Eventos:** Apache Kafka
-* **Orquestração de Contêineres:** Kubernetes
+* **Service Discovery:** Netflix Eureka Server (Spring Cloud)
 * **Roteamento & Segurança Periférica:** API Gateway / Load Balancer
 * **Comunicação Síncrona:** API REST via Spring `RestClient` (Spring 6.1+)
 
