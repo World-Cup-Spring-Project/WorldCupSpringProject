@@ -138,6 +138,7 @@ services:
       SYNC_ENABLED: "true"
       SYNC_ON_STARTUP: "true"
       SYNC_FALLBACK_TO_DB: "true"
+      POSTGRES_SEED_ON_STARTUP: "true"
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
       TRACING_SAMPLING_PROBABILITY: "1.0"
@@ -272,6 +273,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       CORE_DATA_BASE_URL: http://ms-core-data:8081
       GAME_INFO_BASE_URL: http://ms-matches:8082
+      ANALYTICS_SEED_ON_STARTUP: "true"
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
       TRACING_SAMPLING_PROBABILITY: "1.0"

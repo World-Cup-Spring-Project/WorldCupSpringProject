@@ -83,6 +83,19 @@ Requer JDK 21. Os Dockerfiles fazem build multi-stage sem Maven local.
 
 `../arenacup-demo.http` — ingresso → analytics → partida → votação.
 
+## Seed do PostgreSQL (a cada subida dos containers)
+
+Os scripts em `postgres/init/` rodam **apenas na primeira criação do volume**. Para repopular em todo `docker compose up`, o compose habilita:
+
+| Serviço | Variável | Efeito |
+|---------|----------|--------|
+| `ms-core-data` | `POSTGRES_SEED_ON_STARTUP=true` | Aplica `seed_core_data.sql` (times, estádios, jogos) antes do sync da API |
+| `ms-analytics` | `ANALYTICS_SEED_ON_STARTUP=true` | Limpa e recria métricas demo no schema `analytics` |
+
+Falhas no seed ou na API externa **não derrubam** os microsserviços: o startup registra `WARN` e o serviço sobe com dados locais (quando existirem).
+
+Após subir: `GET http://localhost:9999/api/analytics/summary` já retorna dados.
+
 ## Observabilidade (Zipkin)
 
 Tracing distribuído via **Micrometer + Brave** — sem microsserviço novo; container `zipkin` no compose.
