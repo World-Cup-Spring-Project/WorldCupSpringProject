@@ -21,8 +21,6 @@ spring:
               uri: lb://ms-tickets
               predicates:
                 - Path=/api/tickets/**
-              filters:
-                - StripPrefix=2
             - id: engagement
               uri: lb://ms-engagement
               predicates:
