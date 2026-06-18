@@ -238,6 +238,7 @@ services:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
       TRACING_SAMPLING_PROBABILITY: "1.0"
+      MATCHES_BASE_URL: http://ms-matches:8082
     depends_on:
       redis:
         condition: service_healthy
