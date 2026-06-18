@@ -95,6 +95,14 @@ services:
     networks:
       - arenacup
 
+  zipkin:
+    image: openzipkin/zipkin:3.4
+    container_name: arenacup-zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - arenacup
+
   eureka:
     build:
       context: ./eureka
@@ -131,11 +139,15 @@ services:
       SYNC_ON_STARTUP: "true"
       SYNC_FALLBACK_TO_DB: "true"
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       postgres:
         condition: service_healthy
       eureka:
         condition: service_healthy
+      zipkin:
+        condition: service_started
     healthcheck:
       test: [ "CMD-SHELL", "wget -q -O - http://localhost:8081/actuator/health || exit 1" ]
       interval: 10s
@@ -157,11 +169,15 @@ services:
       CORE_DATA_URL: http://ms-core-data:8081
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       mongo:
         condition: service_healthy
       eureka:
         condition: service_healthy
+      zipkin:
+        condition: service_started
       ms-core-data:
         condition: service_healthy
       kafka:
@@ -186,6 +202,8 @@ services:
       CORE_DATA_URL: http://ms-core-data:8081
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       postgres:
         condition: service_healthy
@@ -193,6 +211,8 @@ services:
         condition: service_healthy
       eureka:
         condition: service_healthy
+      zipkin:
+        condition: service_started
       ms-core-data:
         condition: service_healthy
       kafka:
@@ -216,11 +236,15 @@ services:
       REDIS_HOST: redis
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       redis:
         condition: service_healthy
       eureka:
         condition: service_healthy
+      zipkin:
+        condition: service_started
       kafka:
         condition: service_healthy
     healthcheck:
@@ -248,6 +272,8 @@ services:
       CORE_DATA_BASE_URL: http://ms-core-data:8081
       GAME_INFO_BASE_URL: http://ms-matches:8082
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       postgres:
         condition: service_healthy
@@ -257,6 +283,8 @@ services:
         condition: service_healthy
       eureka:
         condition: service_healthy
+      zipkin:
+        condition: service_started
       ms-core-data:
         condition: service_healthy
       ms-matches:
@@ -279,9 +307,13 @@ services:
       - "9999:9999"
     environment:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: "1.0"
     depends_on:
       eureka:
         condition: service_healthy
+      zipkin:
+        condition: service_started
       ms-core-data:
         condition: service_healthy
       ms-matches:

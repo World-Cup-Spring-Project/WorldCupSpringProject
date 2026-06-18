@@ -55,6 +55,7 @@ docker compose up --build
 |---------|-----|
 | API Gateway | http://localhost:9999 |
 | Eureka | http://localhost:8761 |
+| **Zipkin** (tracing) | http://localhost:9411 |
 | Kafka UI | http://localhost:8085 |
 | PostgreSQL | localhost:5433 (`arenacup` / `arenacup` / `arenacup`) |
 
@@ -81,6 +82,21 @@ Requer JDK 21. Os Dockerfiles fazem build multi-stage sem Maven local.
 ## Demo E2E
 
 `../arenacup-demo.http` — ingresso → analytics → partida → votação.
+
+## Observabilidade (Zipkin)
+
+Tracing distribuído via **Micrometer + Brave** — sem microsserviço novo; container `zipkin` no compose.
+
+1. Execute o fluxo do `arenacup-demo.http`
+2. Abra http://localhost:9411 e busque por service name (`api-gateway`, `ms-tickets`, etc.)
+3. Logs dos containers incluem `traceId`/`spanId` para correlacionar com o Zipkin
+
+Variáveis (já no compose):
+
+| Variável | Valor Docker |
+|----------|--------------|
+| `ZIPKIN_ENDPOINT` | `http://zipkin:9411/api/v2/spans` |
+| `TRACING_SAMPLING_PROBABILITY` | `1.0` (100% em dev) |
 
 ## Estrutura
 
