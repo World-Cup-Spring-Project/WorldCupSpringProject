@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      mvc:
+        routes:
+            - id: core-data
+              uri: lb://ms-core-data
+              predicates:
+                - Path=/api/core/**
+              filters:
+                - StripPrefix=2
+            - id: matches
+              uri: lb://ms-matches
+              predicates:
+                - Path=/api/matches/**
+              filters:
+                - StripPrefix=1
+            - id: tickets
+              uri: lb://ms-tickets
+              predicates:
+                - Path=/api/tickets/**
+              filters:
+                - StripPrefix=2
+            - id: engagement
+              uri: lb://ms-engagement
+              predicates:
+                - Path=/api/engagement/**
+              filters:
+                - StripPrefix=2
+            - id: analytics
+              uri: lb://ms-analytics
+              predicates:
+                - Path=/api/analytics/**
+              filters:
+                - StripPrefix=1
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
+    fetch-registry: true
+    register-with-eureka: true
+
+server:
+  port: 9999
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway

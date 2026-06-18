@@ -1,70 +1,103 @@
-# XXX - Sistema de Microsserviços para Operações da Copa do Mundo
+# ArenaCup OS — WorldCupSpringProject
 
-![Java](https://img.shields.io/badge/Java-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
-![Spring Boot](https://img.shields.io/badge/Spring_Boot-6DB33F?style=for-the-badge&logo=spring-boot&logoColor=white)
-![Apache Kafka](https://img.shields.io/badge/Apache_Kafka-231F20?style=for-the-badge&logo=apache-kafka&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
-![Spring Cloud](https://img.shields.io/badge/Spring_Cloud-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
+Repositório central da stack ArenaCup: **Eureka**, **API Gateway**, **docker-compose**, init do Postgres e scripts de build.
 
-O **XXX** é um ecossistema de software distribuído, de alta escalabilidade e orientado a eventos, projetado para gerenciar a criticidade operacional, volumetria massiva e alta volatilidade transacional de um evento de magnitude global: a Copa do Mundo da FIFA.
+## Escopo (6 repositórios)
 
-A arquitetura adota uma abordagem de **Persistência Poliglota** e **Event-Driven Architecture (EDA)** utilizando microsserviços especializados. Isso garante que picos massivos de tráfego (como a abertura de bilheterias ou atualizações de golos em tempo real) sejam absorvidos sem causar degradação ou indisponibilidade no ecossistema.
+| Pasta | Papel |
+|-------|--------|
+| `WorldCupSpringProject/` | Eureka, Gateway, compose, postgres/init |
+| `../ms-core-data/` | Dados mestres (worldcup26.ir) |
+| `../ms-tickets/` | Ingressos + Kafka producer |
+| `../ms-matches/` | Partidas (MongoDB) |
+| `../ms-engagement/` | Votação Craque do Jogo |
+| `../ms-analytics/` | Analytics (`ticket-issued-events`) |
 
----
+## Arquitetura
 
-## 🛠️ Pilha Tecnológica Global (Stack)
+```mermaid
+flowchart LR
+  Client[Cliente / demo.http] --> GW[api-gateway :9999]
+  GW -->|lb://| Eureka[Eureka :8761]
+  Eureka --> Core[ms-core-data]
+  Eureka --> Tickets[ms-tickets]
+  Eureka --> Matches[ms-matches]
+  Eureka --> Engagement[ms-engagement]
+  Eureka --> Analytics[ms-analytics]
+  Tickets -->|ticket-issued-events| Kafka[(Kafka)]
+  Matches -->|match-status-changed| Kafka
+  Kafka --> Engagement
+  Kafka --> Analytics
+  Tickets -->|REST| Core
+  Analytics -->|REST| Core
+  Analytics -->|REST| Matches
+```
 
-* **Core Framework:** Java (Spring Boot)
-* **Persistência Relacional:** Spring Data JPA (PostgreSQL)
-* **Persistência Não-Relacional:** Spring Data MongoDB (MongoDB)
-* **Cache & Travas Distribuídas:** Redis
-* **Mensageria & Eventos:** Apache Kafka
-* **Service Discovery:** Netflix Eureka Server (Spring Cloud)
-* **Roteamento & Segurança Periférica:** API Gateway / Load Balancer
-* **Comunicação Síncrona:** API REST via Spring `RestClient` (Spring 6.1+)
+## Subir a stack
 
----
+```powershell
+cd code/WorldCupSpringProject
+docker compose up --build
+```
 
-## 🗂️ Arquitetura e Divisão de Domínios
+Primeira execução: ~2–3 min até todos os healthchecks ficarem verdes.
 
-O ecossistema é segmentado em 7 microsserviços isolados por contexto e banco de dados:
+Para banco limpo (recria schemas init):
 
-### 1. `ms-core-data` (Núcleo de Dados Centralizado)
-* **Responsabilidade:** Atua como fonte centralizada de dados mestres estáveis e imutáveis compartilhados por múltiplos contextos (dados estruturais de estádios, federações, seleções oficiais e delegações).
-* **Tecnologias:** Java Spring Boot, Spring Data JPA, PostgreSQL, API REST.
+```powershell
+docker compose down -v
+docker compose up --build
+```
 
-### 2. `ms-tickets` (Vendas e Reserva de Ingressos)
-* **Responsabilidade:** Componente de maior pressão transacional. Processa ordens de compra concorrentes e implementa mecanismos de travas no Redis para mitigar problemas de consistência e evitar a venda duplicada do mesmo assento (*double-booking*).
-* **Tecnologias:** Java Spring Boot, Spring Data JPA, Redis (Distributed Locks), Apache Kafka, API Gateway.
+## URLs
 
-### 3. `ms-matches` (Gestão de Partidas e Placar Oficial)
-* **Responsabilidade:** Consome dados ao vivo de telemetria esportiva de uma API externa via `RestClient` do Spring. Mantém e propaga o estado ativo dos jogos (golos, cartões, substituições) de forma fluida e reativa.
-* **Tecnologias:** Java Spring Boot, Spring Data MongoDB, MongoDB, Redis, Apache Kafka.
+| Serviço | URL |
+|---------|-----|
+| API Gateway | http://localhost:9999 |
+| Eureka | http://localhost:8761 |
+| Kafka UI | http://localhost:8085 |
+| PostgreSQL | localhost:5433 (`arenacup` / `arenacup` / `arenacup`) |
 
-### 4. `ms-access-control` (Controle de Catracas e Acesso)
-* **Responsabilidade:** Validação em milissegundos de QR Codes de ingressos nas catracas dos estádios. Implementa resiliência de rede para permitir operação local isolada (*fallback*) caso perca a conectividade com a base central.
-* **Tecnologias:** Java Spring Boot, Spring Data JPA, Apache Kafka, Load Balancer.
+## Rotas do Gateway
 
-### 5. `ms-engagement` (Gamification e Votação)
-* **Responsabilidade:** Processamento massivo de votações populares concentradas nos minutos finais de cada partida (ex: escolha do "Craque do Jogo") utilizando estruturas em memória para evitar gargalos.
-* **Tecnologias:** Java Spring Boot, Redis (Sorted Sets), Apache Kafka.
+| Prefixo | Destino Eureka |
+|---------|----------------|
+| `/api/core/**` | `lb://ms-core-data` |
+| `/api/matches/**` | `lb://ms-matches` |
+| `/api/tickets/**` | `lb://ms-tickets` |
+| `/api/engagement/**` | `lb://ms-engagement` |
+| `/api/analytics/**` | `lb://ms-analytics` |
 
-### 6. `ms-logistics` (Gestão de Delegações e Transporte)
-* **Responsabilidade:** Orquestração de regras de negócio complexas para agendamento de recursos (hotéis, campos de treino e frotas de transporte), aplicando o padrão Saga para transações distribuídas.
-* **Tecnologias:** Java Spring Boot, Spring Data JPA, Apache Kafka.
+StripPrefix=2 — ex.: `GET /api/core/teams/MEX` → `ms-core-data/teams/MEX`.
 
-### 7. `ms-analytics` (Consolidador Financeiro e Ocupação)
-* **Responsabilidade:** Componente estritamente reativo. Consome streams de dados contínuos do Kafka gerados pelas catracas e bilheterias para consolidar dashboards de faturamento e taxa de ocupação por setor em tempo real.
-* **Tecnologias:** Java Spring Boot, Spring Data JPA, Apache Kafka.
+## Build local (opcional)
 
----
+```powershell
+.\build-all.ps1
+```
 
-## 💾 Modelagem de Dados & Persistência Poliglota
+Requer JDK 21. Os Dockerfiles fazem build multi-stage sem Maven local.
 
-### Relacional (PostgreSQL)
-Aplicado em cenários de conformidade ACID rígida e integridade referencial forte (cadastro base em `ms-core-data`, checkout financeiro em `ms-tickets` e controle de agendas em `ms-logistics`).
+## Demo E2E
 
-### Não-Relacional (MongoDB)
-O `ms-matches` adota o MongoDB para persistir a linha do tempo das partidas de forma desnormalizada, absorvendo as mudanças de esquema dos payloads JSON recebidos da API externa de dados em tempo real.
+`../arenacup-demo.http` — ingresso → analytics → partida → votação.
+
+## Estrutura
+
+```
+WorldCupSpringProject/
+├── docker-compose.yml
+├── build-all.ps1
+├── eureka/
+├── gateway/
+└── postgres/init/
+    ├── 01-schemas.sql
+    ├── 02-core-data-tables.sql
+    ├── 03-tickets.sql
+    ├── 06-analytics.sql
+    └── 07-core-data-sync-metadata.sql
+```
+
+## Seed core-data (manual)
+
+Snapshots em `../ms-core-data/postgres/seed/` — não rodam no `docker up`. Ver README do ms-core-data.

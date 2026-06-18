@@ -1,89 +1,304 @@
-services:
+# ArenaCup OS - stack central (WorldCupSpringProject)
+# Run: docker compose up --build
 
+networks:
+  arenacup:
+    name: arenacup
+
+services:
   postgres:
-    image: postgres:17
+    image: postgres:17-alpine
     container_name: arenacup-postgres
     environment:
-      POSTGRES_USER: arenacup_user
-      POSTGRES_PASSWORD: arenacup_password
-      POSTGRES_DB: arenacup_db
+      POSTGRES_DB: arenacup
+      POSTGRES_USER: arenacup
+      POSTGRES_PASSWORD: arenacup
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - arenacup-postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U arenacup -d arenacup" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - arenacup
 
-  mongodb:
-    image: mongo:6.0
-    container_name: arenacup-mongodb
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+  mongo:
+    image: mongo:8
+    container_name: arenacup-mongo
     ports:
       - "27017:27017"
     volumes:
-      - mongodb_data:/data/db
-
-  mongo-express:
-    image: mongo-express:latest
-    container_name: mongo-ui
-    ports:
-      - "8081:8081"
-    environment:
-      ME_CONFIG_MONGODB_URL: mongodb://root:rootpassword@mongodb:27017/
-      ME_CONFIG_BASICAUTH_ENABLED: true
-      ME_CONFIG_BASICAUTH_USERNAME: admin
-      ME_CONFIG_BASICAUTH_PASSWORD: adminpassword
-    depends_on:
-      - mongodb
+      - ./mongo/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - arenacup
 
   redis:
     image: redis:7-alpine
     container_name: arenacup-redis
     ports:
       - "6379:6379"
-
-
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    container_name: arenacup-redis-ui
-    environment:
-      - REDIS_HOSTS=local:redis:6379
-    ports:
-      - "8083:8081"
-    depends_on:
-      - redis
-
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - arenacup
 
   kafka:
-    image: apache/kafka:4.1.0
+    image: confluentinc/cp-kafka:7.6.1
     container_name: arenacup-kafka
     ports:
-      - "9092:9092"
       - "29092:29092"
     environment:
-      - KAFKA_NODE_ID=1
-      - KAFKA_PROCESS_ROLES=broker,controller
-      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - CLUSTER_ID=NjI0Y2RmZjkzM2QxNDg5O
-      - KAFKA_LISTENERS=INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
-      - KAFKA_ADVERTISED_LISTENERS=INTERNAL://kafka:9092,EXTERNAL://localhost:29092
-      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
-      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
-      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://kafka:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    healthcheck:
+      test: [ "CMD-SHELL", "kafka-topics --bootstrap-server kafka:9092 --list || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - arenacup
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
-    container_name: kafka-ui
+    container_name: arenacup-kafka-ui
     ports:
-      - "8080:8080"
+      - "8085:8080"
     environment:
-      KAFKA_CLUSTERS_0_NAME: local-cluster
+      KAFKA_CLUSTERS_0_NAME: arenacup-local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-      DYNAMIC_CONFIG_ENABLED: 'true'
     depends_on:
-      - kafka
-  
+      kafka:
+        condition: service_healthy
+    networks:
+      - arenacup
+
+  eureka:
+    build:
+      context: ./eureka
+      dockerfile: docker/Dockerfile
+    image: arenacup/eureka:0.0.1-SNAPSHOT
+    container_name: arenacup-eureka
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:8761/actuator/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - arenacup
+
+  ms-core-data:
+    build:
+      context: ../ms-core-data
+      dockerfile: docker/Dockerfile
+    image: arenacup/ms-core-data:0.0.1-SNAPSHOT
+    container_name: ms-core-data
+    ports:
+      - "8081:8081"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: arenacup
+      POSTGRES_USER: arenacup
+      POSTGRES_PASSWORD: arenacup
+      WORLDCUP_API_URL: https://worldcup26.ir
+      SYNC_ENABLED: "true"
+      SYNC_ON_STARTUP: "true"
+      SYNC_FALLBACK_TO_DB: "true"
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:8081/actuator/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+    networks:
+      - arenacup
+
+  ms-matches:
+    build:
+      context: ../ms-matches
+      dockerfile: docker/Dockerfile
+    image: arenacup/ms-matches:0.0.1-SNAPSHOT
+    container_name: ms-matches
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      MONGODB_URI: mongodb://mongo:27017/arenacup
+      CORE_DATA_URL: http://ms-core-data:8081
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+    depends_on:
+      mongo:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+      ms-core-data:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:8082/actuator/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    networks:
+      - arenacup
+
+  ms-tickets:
+    build:
+      context: ../ms-tickets
+      dockerfile: docker/Dockerfile
+    image: arenacup/ms-tickets:0.0.1-SNAPSHOT
+    container_name: ms-tickets
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      CORE_DATA_URL: http://ms-core-data:8081
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+      ms-core-data:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:8083/actuator/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    networks:
+      - arenacup
+
+  ms-engagement:
+    build:
+      context: ../ms-engagement
+      dockerfile: docker/Dockerfile
+    image: arenacup/ms-engagement:0.0.1-SNAPSHOT
+    container_name: ms-engagement
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+    depends_on:
+      redis:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:8080/actuator/health/liveness || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    networks:
+      - arenacup
+
+  ms-analytics:
+    build:
+      context: ../ms-analytics
+      dockerfile: docker/Dockerfile
+    image: arenacup/ms-analytics:0.0.1-SNAPSHOT
+    container_name: ms-analytics
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: arenacup
+      POSTGRES_USER: arenacup
+      POSTGRES_PASSWORD: arenacup
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CORE_DATA_BASE_URL: http://ms-core-data:8081
+      GAME_INFO_BASE_URL: http://ms-matches:8082
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+      ms-core-data:
+        condition: service_healthy
+      ms-matches:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:8087/actuator/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    networks:
+      - arenacup
+
+  api-gateway:
+    build:
+      context: ./gateway
+      dockerfile: docker/Dockerfile
+    image: arenacup/api-gateway:0.0.1-SNAPSHOT
+    container_name: api-gateway
+    ports:
+      - "9999:9999"
+    environment:
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+    depends_on:
+      eureka:
+        condition: service_healthy
+      ms-core-data:
+        condition: service_healthy
+      ms-matches:
+        condition: service_healthy
+      ms-tickets:
+        condition: service_healthy
+      ms-engagement:
+        condition: service_healthy
+      ms-analytics:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:9999/actuator/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    networks:
+      - arenacup
 
 volumes:
-  postgres_data:
-  mongodb_data:
+  arenacup-postgres-data:
