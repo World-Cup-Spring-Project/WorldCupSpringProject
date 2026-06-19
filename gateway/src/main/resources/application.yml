@@ -33,6 +33,12 @@ spring:
                 - Path=/api/analytics/**
               filters:
                 - StripPrefix=1
+            - id: logistics
+              uri: lb://ms-logistics
+              predicates:
+                - Path=/api/logistics/**
+              filters:
+                - StripPrefix=2
 
 eureka:
   client:

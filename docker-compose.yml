@@ -300,6 +300,41 @@ services:
     networks:
       - arenacup
 
+  ms-logistics:
+    build:
+      context: ../ms-logistics
+      dockerfile: docker/Dockerfile
+    image: arenacup/ms-logistics:0.0.1-SNAPSHOT
+    container_name: ms-logistics
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      POSTGRES_USER: arenacup
+      POSTGRES_PASSWORD: arenacup
+      CORE_DATA_BASE_URL: http://ms-core-data:8081
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka:8761/eureka/
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      TRACING_SAMPLING_PROBABILITY: "1.0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+      zipkin:
+        condition: service_started
+      ms-core-data:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O - http://localhost:8086/actuator/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 90s
+    networks:
+      - arenacup
+
   api-gateway:
     build:
       context: ./gateway
@@ -326,6 +361,8 @@ services:
       ms-engagement:
         condition: service_healthy
       ms-analytics:
+        condition: service_healthy
+      ms-logistics:
         condition: service_healthy
     healthcheck:
       test: [ "CMD-SHELL", "wget -q -O - http://localhost:9999/actuator/health || exit 1" ]
