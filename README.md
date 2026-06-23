@@ -1,339 +1,247 @@
-# ArenaCup OS
+# ArenaCup - Plataforma de Microservicos para Copa do Mundo
 
-**Um ecossistema de microsserviços para operar a Copa do Mundo 2026 — do apito inicial ao craque da torcida, passando por ingressos, analytics e logística de delegações.**
+Projeto academico baseado em uma arquitetura de microservicos para organizar dados, jogos, ingressos, engajamento, logistica e metricas de uma competicao de futebol. A aplicacao usa Spring Boot, Docker Compose, Eureka, API Gateway, Kafka, Redis, PostgreSQL e MongoDB.
 
-Imagine milhões de torcedores, centenas de partidas, filas de bilheteria disputando o mesmo assento e, nos minutos finais, uma enxurrada de votos pelo jogador da partida. O **ArenaCup OS** nasce para absorver exatamente esse tipo de pressão: cada domínio de negócio vive no seu próprio serviço, com o banco certo para o job, comunicação síncrona quando a resposta precisa ser imediata e **Kafka** quando o mundo pode seguir em frente enquanto o evento viaja pela rede.
+## Objetivo do projeto
 
-Este repositório (`WorldCupSpringProject`) é o **coração da operação**: API Gateway, Eureka, Docker Compose, init do PostgreSQL e o ponto de partida para subir toda a stack com um comando.
+O objetivo do ArenaCup e simular uma plataforma distribuida para uma Copa do Mundo, onde cada microservico tem uma responsabilidade propria:
 
----
+- centralizar dados oficiais de selecoes, estadios, grupos e jogos;
+- controlar partidas e status dos jogos;
+- vender, consultar, transferir e cancelar ingressos;
+- publicar eventos de compra e cancelamento em Kafka;
+- consumir eventos para gerar metricas no `ms-analytics`;
+- permitir votacoes e engajamento dos usuarios;
+- controlar fluxos logisticos de delegacoes, hoteis, treinos e transporte;
+- expor tudo por um unico ponto de entrada, o `api-gateway`.
 
-## A história em uma requisição
+## Servicos do projeto
 
-Um torcedor abre o app e compra um ingresso. Por trás do clique:
+| Servico | Responsabilidade | Banco / recurso principal | Rota pelo gateway |
+| --- | --- | --- | --- |
+| `api-gateway` | Entrada unica da aplicacao e roteamento para os micros | Eureka | `http://localhost:9999` |
+| `eureka` | Service discovery dos microservicos | Registro Eureka | `http://localhost:8761` |
+| `auth-service` | Cadastro, login e consulta do usuario autenticado | PostgreSQL | `/auth/**` |
+| `ms-core-data` | Dados base da Copa: selecoes, estadios, grupos e jogos | PostgreSQL + API externa | `/api/core/**` |
+| `ms-matches` | Sincronizacao e controle das partidas | MongoDB + Kafka | `/api/matches/**` |
+| `ms-tickets` | Compra, consulta, transferencia e cancelamento de ingressos | PostgreSQL + Redis + Kafka | `/api/tickets/**` |
+| `ms-analytics` | Metricas de vendas, cancelamentos, receita, ocupacao e publico | PostgreSQL + Kafka | `/api/analytics/**` |
+| `ms-engagement` | Votacao e ranking de jogadores por partida | Redis + Kafka | `/api/engagement/**` |
+| `ms-logistics` | Delegacoes, hoteis, locais de treino, transporte e saga logistica | PostgreSQL + Kafka | `/api/logistics/**` |
 
-1. A requisição entra pelo **API Gateway** (`:9999`) — um único endereço para o mundo externo.
-2. O Gateway consulta o **Eureka** e encaminha para `ms-tickets` via `lb://`.
-3. O tickets valida jogo e estádio no **ms-core-data**, trava o assento no **Redis** e persiste no **PostgreSQL**.
-4. Um evento `ticket-issued-events` dispara no **Kafka**; o **ms-analytics** consolida receita em tempo real.
-5. Quando a partida termina, o **ms-matches** publica `match-status-changed-events`.
-6. O **ms-engagement** abre a votação do Craque do Jogo no **Redis**; milhares de votos atualizam o ranking em O(log N).
-7. Enquanto isso, o **ms-logistics** orquestra hotel, treino e transporte para delegações — com **Saga** e compensação automática.
+## Infraestrutura
 
-Tudo rastreável no **Zipkin**. Tudo registrado no **Eureka**. Tudo sob o mesmo guarda-chuva.
+O `docker-compose.yml` principal fica em:
 
-```mermaid
-flowchart TB
-    Client[Cliente / App / demo.http] --> GW[API Gateway :9999]
-    GW -->|lb://| Eureka[Eureka :8761]
-    Eureka --> Core[ms-core-data]
-    Eureka --> Tickets[ms-tickets]
-    Eureka --> Matches[ms-matches]
-    Eureka --> Engagement[ms-engagement]
-    Eureka --> Analytics[ms-analytics]
-    Eureka --> Logistics[ms-logistics]
-    Core -->|worldcup26.ir| API[API externa]
-    Tickets -->|REST| Core
-    Tickets -->|ticket-issued-events| Kafka[(Kafka)]
-    Matches -->|match-status-changed| Kafka
-    Logistics -->|logistics-*-events| Kafka
-    Kafka --> Engagement
-    Kafka --> Analytics
-    Engagement -->|REST| Matches
-    Logistics -->|REST| Core
-    Analytics -->|REST| Core
-    Analytics -->|REST| Matches
-    GW -.->|traceId| Zipkin[Zipkin :9411]
+```text
+WorldCupSpringProject/docker-compose.yml
 ```
 
----
+Ele sobe os servicos da aplicacao e tambem a infraestrutura:
 
-## Os microsserviços — elenco principal
+- `postgres`: banco relacional principal, exposto em `localhost:5433`;
+- `mongo`: banco usado pelo `ms-matches`, exposto em `localhost:27017`;
+- `redis`: cache e controle rapido de estado, exposto em `localhost:6379`;
+- `kafka`: mensageria entre micros, exposto em `localhost:29092`;
+- `kafka-ui`: interface para ver topicos Kafka, em `http://localhost:8085`;
+- `zipkin`: rastreamento distribuido, em `http://localhost:9411`;
+- `eureka`: descoberta dos servicos, em `http://localhost:8761`.
 
-| Serviço | Missão | Stack de dados |
-|---------|--------|----------------|
-| **ms-core-data** | Fonte única de times, estádios, grupos e jogos (sync com worldcup26.ir) | PostgreSQL (`core_data`) |
-| **ms-tickets** | Venda de ingressos com anti-double-booking | PostgreSQL + Redis + Kafka |
-| **ms-matches** | Ciclo de vida da partida, timeline, candidatos ao craque | MongoDB + Kafka |
-| **ms-engagement** | Votação "Craque do Jogo" em tempo real | Redis + Kafka |
-| **ms-analytics** | Dashboards de receita e ocupação | PostgreSQL (`analytics`) + Kafka |
-| **ms-logistics** | Delegações, hotéis, treinos, transporte — Saga orquestrada | PostgreSQL (`logistics`) + Kafka |
+## Como executar
 
-Infraestrutura compartilhada: **Eureka**, **Kafka**, **Redis**, **Zipkin**, **PostgreSQL**, **MongoDB**.
-
----
-
-## Stack tecnológica
-
-| Camada | Tecnologias |
-|--------|-------------|
-| **Runtime** | Java 21, Spring Boot 3.4+, Spring Cloud |
-| **API** | Spring Web, Spring Cloud Gateway (MVC), REST |
-| **Service Discovery** | Netflix Eureka |
-| **Mensageria** | Apache Kafka (1 tópico por evento) |
-| **Cache / ranking / locks** | Redis (Sorted Sets, Sets, SETNX) |
-| **Persistência** | PostgreSQL, MongoDB, Flyway |
-| **Resiliência** | Resilience4j (Retry + Circuit Breaker) |
-| **Observabilidade** | Micrometer Tracing, Brave, Zipkin |
-| **Containerização** | Docker, Docker Compose, multi-stage builds |
-
----
-
-## Porta de entrada — API Gateway + Eureka
-
-O cliente nunca precisa saber quantos serviços existem. Uma URL. Um Gateway. O Eureka resolve o resto.
-
-Rotas definidas em `gateway/src/main/resources/application.yml`:
-
-```yaml
-spring:
-  cloud:
-    gateway:
-      mvc:
-        routes:
-            - id: core-data
-              uri: lb://ms-core-data
-              predicates:
-                - Path=/api/core/**
-              filters:
-                - StripPrefix=2
-            - id: engagement
-              uri: lb://ms-engagement
-              predicates:
-                - Path=/api/engagement/**
-              filters:
-                - StripPrefix=2
-            - id: logistics
-              uri: lb://ms-logistics
-              predicates:
-                - Path=/api/logistics/**
-              filters:
-                - StripPrefix=2
-```
-
-O prefixo `lb://` pede ao Eureka uma instância saudável do serviço. O **StripPrefix** traduz a URL pública (`/api/core/teams/MEX`) para o path interno (`/teams/MEX`) — o gateway fala a língua de cada microsserviço.
-
-Tracing já configurado no gateway — cada requisição ganha `traceId` nos logs:
-
-```yaml
-management:
-  zipkin:
-    tracing:
-      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
-logging:
-  pattern:
-    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
-```
-
----
-
-## ms-core-data — a memória da Copa
-
-Sincroniza dados mestres da API [worldcup26.ir](https://worldcup26.ir) para um cache local PostgreSQL. Resiliência na borda externa: **Retry** para falhas transitórias, **Circuit Breaker** quando a API fica fora, fallback para snapshot local.
-
-```java
-@Retry(name = "worldcup-api")
-@CircuitBreaker(name = "worldcup-api", fallbackMethod = "fetchTeamsFallback")
-public List<WorldCupApiResponses.WorldCupTeam> fetchTeams() {
-    return get("/get/teams", WorldCupApiResponses.TeamsWrapper.class).teams();
-}
-```
-
-Times, estádios, grupos e jogos alimentam todos os outros domínios — tickets valida partidas, logistics valida seleções, matches espelha jogos.
-
----
-
-## ms-tickets — a corrida pelo assento
-
-No pico de vendas, dezenas de usuários miram o mesmo lugar. O serviço combina **lock distribuído no Redis** com **unicidade no PostgreSQL**:
-
-```java
-String lockKey = "seat_lock:" + ticket.getMatchId() + ":" + ticket.getStadiumId() + ":" + ticket.getSeatCode();
-Boolean lockAcquired = redisTemplate.opsForValue().setIfAbsent(lockKey, "LOCKED", Duration.ofSeconds(5));
-
-if (Boolean.FALSE.equals(lockAcquired)) {
-    throw new RuntimeException("Este assento já está em processo de compra por outro usuário neste exato momento!");
-}
-
-ticket.setStatus(TicketStatus.CONFIRMED);
-Ticket savedTicket = ticketRepository.save(ticket);
-eventPublisher.publishTicketIssued(event);
-```
-
-Compra confirmada → evento Kafka → analytics atualiza receita sem o tickets precisar conhecer o destino.
-
----
-
-## ms-matches + ms-engagement — do apito final ao craque
-
-Quando o árbitro encerra a partida (`FINISHED`), o matches publica no Kafka. O engagement **escuta** e abre a janela de votação — sem acoplamento HTTP entre os dois:
-
-```java
-@KafkaListener(topics = "${arenacup.kafka.topics.match-status-changed}", ...)
-public void onMatchStatusChanged(@Payload MatchStatusChangedEvent event, ...) {
-    if (openOn.equalsIgnoreCase(event.status())) {
-        votingService.openWindow(event.matchId(), correlationId, candidates);
-        return;
-    }
-    if (closeOn.equalsIgnoreCase(event.status())) {
-        ClosedWindow closed = votingService.closeWindow(event.matchId(), correlationId);
-        closed.winner().ifPresent(winner -> publisher.publish(new ManOfTheMatchChosenEvent(...)));
-    }
-}
-```
-
-Cada voto incrementa o ranking no Redis com operação atômica — **Sorted Set** para throughput e **Set** para voto único por usuário:
-
-```java
-Long added = redis.opsForSet().add(votersKey(matchId), userId);
-if (added == null || added == 0L) {
-    throw new DuplicateVoteException(matchId, userId);
-}
-redis.opsForValue().set(userVoteKey(matchId, userId), playerName);
-Double score = redis.opsForZSet().incrementScore(rankingKey(matchId), playerName, 1.0);
-```
-
----
-
-## ms-logistics — a Saga das delegações
-
-Reservar hotel, centro de treino e transporte num único fluxo. Se o transporte falhar, a Saga **compensa** — cancela treino e hotel na ordem reversa:
-
-```java
-@Transactional
-public String startFullPackage(FullPackageRequest request) {
-    String correlationId = UUID.randomUUID().toString();
-    LogisticsSagaState sagaState = new LogisticsSagaState();
-    sagaState.setCurrentStep(SagaStep.HOTEL_BOOKING);
-    // Passo 1: hotel → Passo 2: treino → Passo 3: transporte
-    sagaState.setCurrentStep(SagaStep.COMPLETED);
-    eventPublisher.publishSagaCompleted(...);
-}
-```
-
-Cada passo bem-sucedido publica evento Kafka; o estado da Saga fica persistido para auditoria e consulta via `GET /logistics/saga/{correlationId}`.
-
----
-
-## Persistência poliglota — o banco certo para cada história
-
-```sql
-CREATE SCHEMA IF NOT EXISTS core_data;
-CREATE SCHEMA IF NOT EXISTS tickets;
-CREATE SCHEMA IF NOT EXISTS analytics;
-CREATE SCHEMA IF NOT EXISTS logistics;
-```
-
-| Dado | Por quê |
-|------|---------|
-| **PostgreSQL** (core, tickets, analytics, logistics) | Transações ACID, integridade referencial |
-| **MongoDB** (matches) | Timeline de eventos embutida no documento — schema flexível |
-| **Redis** (tickets, engagement) | Locks distribuídos e ranking em tempo real |
-| **Kafka** | Desacoplamento assíncrono entre domínios |
-
----
-
-## Subir a stack
+Entre na pasta do compose principal:
 
 ```powershell
-cd code/WorldCupSpringProject
-docker compose up --build
+cd C:\Users\guilh\Documents\springtest\WorldCupSpringProject
 ```
 
-Primeira execução: aguarde os healthchecks (~2–3 min). Para recriar bancos do zero:
+Suba todos os containers:
+
+```powershell
+docker compose up -d --build
+```
+
+Veja se todos ficaram saudaveis:
+
+```powershell
+docker compose ps
+```
+
+Para acompanhar logs de um servico especifico:
+
+```powershell
+docker compose logs -f ms-analytics
+```
+
+Para derrubar o ambiente sem apagar os dados:
+
+```powershell
+docker compose down
+```
+
+Para derrubar e apagar os volumes de banco, limpando os dados:
 
 ```powershell
 docker compose down -v
-docker compose up --build
 ```
 
-Build local de todos os JARs (JDK 21):
+## Fluxo principal da aplicacao
 
-```powershell
-.\build-all.ps1
+### 1. Carga de dados da Copa
+
+O `ms-core-data` e o microservico responsavel pelos dados base da competicao. Ele trabalha com selecoes, estadios, grupos e jogos.
+
+Quando o ambiente sobe, ele tenta sincronizar os dados com a API externa configurada em `WORLDCUP_API_URL`. Se a API externa estiver indisponivel, o servico pode usar os dados ja existentes no banco ou dados locais de seed, dependendo das configuracoes de fallback.
+
+Exemplos de consulta pelo gateway:
+
+```http
+GET http://localhost:9999/api/core/teams
+GET http://localhost:9999/api/core/stadiums
+GET http://localhost:9999/api/core/games
+GET http://localhost:9999/api/core/groups
 ```
 
----
+### 2. Sincronizacao de partidas
 
-## URLs da operação
-
-| Serviço | URL |
-|---------|-----|
-| **API Gateway** | http://localhost:9999 |
-| **Eureka** (service registry) | http://localhost:8761 |
-| **Zipkin** (tracing distribuído) | http://localhost:9411 |
-| **Kafka UI** | http://localhost:8085 |
-| **PostgreSQL** | `localhost:5433` — db `arenacup`, user/pass `arenacup` |
-
-### Rotas públicas (via Gateway)
-
-| Prefixo | Microsserviço |
-|---------|---------------|
-| `/api/core/**` | ms-core-data |
-| `/api/matches/**` | ms-matches |
-| `/api/tickets/**` | ms-tickets |
-| `/api/engagement/**` | ms-engagement |
-| `/api/analytics/**` | ms-analytics |
-| `/api/logistics/**` | ms-logistics |
+O `ms-matches` consulta o `ms-core-data` para montar e manter as partidas no seu proprio banco MongoDB. Ele tambem publica eventos Kafka quando o status de uma partida muda.
 
 Exemplos:
 
+```http
+GET  http://localhost:9999/api/matches
+POST http://localhost:9999/api/matches/sync
+PATCH http://localhost:9999/api/matches/{id}/status
 ```
-GET  http://localhost:9999/api/core/teams/MEX
+
+### 3. Compra de ingresso
+
+O fluxo de compra passa pelo `api-gateway` e chega no `ms-tickets`.
+
+Fluxo resumido:
+
+1. O cliente chama `POST /api/tickets/buy`.
+2. O `ms-tickets` valida o jogo e o estadio no `ms-core-data`.
+3. O `ms-tickets` usa Redis para evitar conflito de assento.
+4. O ingresso e salvo no PostgreSQL.
+5. Um evento e publicado no Kafka no topico `ticket-issued-events`.
+6. O `ms-analytics` consome esse evento e atualiza as metricas de vendas.
+
+Exemplo:
+
+```http
 POST http://localhost:9999/api/tickets/buy
-GET  http://localhost:9999/api/analytics/summary
+```
+
+```json
+{
+  "matchId": "29",
+  "stadiumId": "10",
+  "seatCode": "SETOR-A-001",
+  "customerDocument": "12345678900",
+  "price": 250.00
+}
+```
+
+### 4. Cancelamento de ingresso
+
+O cancelamento tambem passa pelo `ms-tickets`.
+
+Fluxo resumido:
+
+1. O cliente chama `DELETE /api/tickets/{id}/cancel`.
+2. O `ms-tickets` marca o ingresso como cancelado.
+3. O assento pode ser liberado no Redis.
+4. Um evento e publicado no Kafka no topico `ticket-cancelled-events`.
+5. O `ms-analytics` consome o evento e atualiza as metricas de cancelamento.
+
+Exemplo:
+
+```http
+DELETE http://localhost:9999/api/tickets/1/cancel
+```
+
+### 5. Analytics
+
+O `ms-analytics` nao calcula as metricas inventando dados. Ele depende dos eventos reais de compra e cancelamento publicados pelo `ms-tickets`.
+
+Principais consultas:
+
+| Nome para usar no Postman | URL |
+| --- | --- |
+| Resumo geral das metricas | `GET http://localhost:9999/api/analytics/summary` |
+| Receita por setor | `GET http://localhost:9999/api/analytics/revenue-by-sector` |
+| Ocupacao por setor | `GET http://localhost:9999/api/analytics/occupancy-by-sector` |
+| Jogos ou estadios mais lucrativos | `GET http://localhost:9999/api/analytics/top-profitable-games` |
+| Taxa de cancelamento | `GET http://localhost:9999/api/analytics/cancellation-rate` |
+| Selecao com maior publico | `GET http://localhost:9999/api/analytics/top-attendance-team` |
+
+Observacao importante: atualmente o setor vem do codigo do assento informado na compra. Por exemplo, em `SETOR-A-001`, o agrupamento usa a parte do setor enviada no `seatCode`. Ja a taxa de ocupacao pode aparecer como `0` quando nao existe capacidade real de setor cadastrada para calcular percentual.
+
+### 6. Engajamento
+
+O `ms-engagement` trabalha com votacoes por partida, ranking e janela de votacao. Ele se integra ao `ms-matches` e usa Redis para armazenar dados rapidos de votacao.
+
+Exemplos:
+
+```http
+POST http://localhost:9999/api/engagement/matches/{matchId}/votes
+GET  http://localhost:9999/api/engagement/matches/{matchId}/ranking
+GET  http://localhost:9999/api/engagement/matches/{matchId}/window
+```
+
+### 7. Logistica
+
+O `ms-logistics` organiza recursos logisticos, como delegacoes, hoteis, locais de treino e transporte. Ele tambem possui um fluxo de saga para reservar um pacote completo de logistica.
+
+Exemplos:
+
+```http
+GET  http://localhost:9999/api/logistics/delegations
+GET  http://localhost:9999/api/logistics/hotels
+GET  http://localhost:9999/api/logistics/training-venues
+GET  http://localhost:9999/api/logistics/transport/assets
 POST http://localhost:9999/api/logistics/logistics/full-package
 ```
 
----
+## Principais topicos Kafka
 
-## Demo ponta a ponta
+| Topico | Quem publica | Quem consome | Finalidade |
+| --- | --- | --- | --- |
+| `ticket-issued-events` | `ms-tickets` | `ms-analytics` | Registrar venda de ingresso |
+| `ticket-cancelled-events` | `ms-tickets` | `ms-analytics` | Registrar cancelamento de ingresso |
+| `match-status-changed-events` | `ms-matches` | `ms-engagement` | Abrir/fechar janelas de votacao |
+| `man-of-the-match-chosen-events` | `ms-engagement` | Outros micros interessados | Resultado de votacao |
+| `logistics-*-events` | `ms-logistics` | Micros interessados | Eventos do fluxo logistico |
 
-Arquivo `../arenacup-demo.http` — fluxo completo: ingresso → analytics → partida → votação.
+## URLs uteis
 
-Scripts de carga no `ms-engagement/scripts/` e `ms-tickets/scripts/` para simular concorrência real.
+| Ferramenta | URL |
+| --- | --- |
+| API Gateway | `http://localhost:9999` |
+| Eureka | `http://localhost:8761` |
+| Kafka UI | `http://localhost:8085` |
+| Zipkin | `http://localhost:9411` |
+| ms-core-data direto | `http://localhost:8081` |
+| PostgreSQL | `localhost:5433` |
+| MongoDB | `localhost:27017` |
+| Redis | `localhost:6379` |
 
----
+## Tecnologias utilizadas
 
-## Estrutura deste repositório
+- Java 21;
+- Spring Boot;
+- Spring Cloud Gateway;
+- Eureka Server e Eureka Client;
+- Spring Data JPA;
+- Spring Data MongoDB;
+- Spring Data Redis;
+- Apache Kafka;
+- PostgreSQL;
+- MongoDB;
+- Redis;
+- Docker e Docker Compose;
+- Zipkin para rastreamento distribuido;
+- Resilience4j para retry e circuit breaker;
+- Actuator para health checks.
 
-```
-WorldCupSpringProject/
-├── docker-compose.yml      # Stack completa ArenaCup
-├── build-all.ps1           # Build de todos os microsserviços
-├── eureka/                 # Service Discovery (:8761)
-├── gateway/                # API Gateway (:9999)
-└── postgres/init/          # Schemas e DDL inicial
-    ├── 01-schemas.sql
-    ├── 02-core-data-tables.sql
-    ├── 03-tickets.sql
-    ├── 06-analytics.sql
-    └── 07-core-data-sync-metadata.sql
-```
-
-Microsserviços (repositórios irmãos):
-
-```
-../ms-core-data/
-../ms-tickets/
-../ms-matches/
-../ms-engagement/
-../ms-analytics/
-../ms-logistics/
-```
-
----
-
-## Observabilidade
-
-Tracing distribuído com **Micrometer + Brave → Zipkin**. Cada serviço exporta spans; no UI você vê o caminho completo — Gateway → tickets → core-data → Kafka → analytics — numa única trace.
-
-Logs correlacionados com `%X{traceId:-}` em cada container.
-
----
-
-## ArenaCup OS
-
-Microsserviços especializados. Comunicação síncrona onde a resposta importa. Eventos onde o tempo é elastic. Bancos escolhidos pelo domínio. Resiliência na fronteira. Uma Copa inteira, uma arquitetura.
-
-**Suba a stack. Abra o Zipkin. Dispare a demo. A Copa começa em `:9999`.**
