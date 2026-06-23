@@ -5,40 +5,44 @@ spring:
     gateway:
       mvc:
         routes:
-            - id: core-data
-              uri: lb://ms-core-data
-              predicates:
-                - Path=/api/core/**
-              filters:
-                - StripPrefix=2
-            - id: matches
-              uri: lb://ms-matches
-              predicates:
-                - Path=/api/matches/**
-              filters:
-                - StripPrefix=1
-            - id: tickets
-              uri: lb://ms-tickets
-              predicates:
-                - Path=/api/tickets/**
-            - id: engagement
-              uri: lb://ms-engagement
-              predicates:
-                - Path=/api/engagement/**
-              filters:
-                - StripPrefix=2
-            - id: analytics
-              uri: lb://ms-analytics
-              predicates:
-                - Path=/api/analytics/**
-              filters:
-                - StripPrefix=1
-            - id: logistics
-              uri: lb://ms-logistics
-              predicates:
-                - Path=/api/logistics/**
-              filters:
-                - StripPrefix=2
+          - id: auth
+            uri: lb://auth-service
+            predicates:
+              - Path=/auth/**
+          - id: core-data
+            uri: lb://ms-core-data
+            predicates:
+              - Path=/api/core/**
+            filters:
+              - StripPrefix=2
+          - id: matches
+            uri: lb://ms-matches
+            predicates:
+              - Path=/api/matches/**
+            filters:
+              - StripPrefix=1
+          - id: tickets
+            uri: lb://ms-tickets
+            predicates:
+              - Path=/api/tickets/**
+          - id: engagement
+            uri: lb://ms-engagement
+            predicates:
+              - Path=/api/engagement/**
+            filters:
+              - StripPrefix=2
+          - id: analytics
+            uri: lb://ms-analytics
+            predicates:
+              - Path=/api/analytics/**
+            filters:
+              - StripPrefix=1
+          - id: logistics
+            uri: lb://ms-logistics
+            predicates:
+              - Path=/api/logistics/**
+            filters:
+              - StripPrefix=2
 
 eureka:
   client:
